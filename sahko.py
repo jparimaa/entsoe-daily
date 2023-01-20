@@ -1,7 +1,6 @@
 import requests
 import pandas
 import json
-import openpyxl
 import time
 import datetime
 
@@ -11,31 +10,63 @@ def to_gmt_plus_2(hour):
         hour -= 24
     return hour
 
-response = requests.get("https://api.porssisahko.net/v1/latest-prices.json")
-print(response)
+def log(msg):
+    date = datetime.datetime.now()
+    stamped_msg = str(date) + ": " + msg
+    print(stamped_msg)
+    with open("sahko.log", "a") as myfile:
+        myfile.write(stamped_msg+ "\n")
 
-json_data = response.json()
+def sleep_until_17():
+    t = datetime.datetime.today()
+    future = datetime.datetime(t.year,t.month,t.day,17,0)
+    if t.hour >= 17:
+        future += datetime.timedelta(days=1)
+    log("Sleeping until " + str(future) + " and after that query new data")
+    sleep_time = (future-t).total_seconds()
+    time.sleep(sleep_time)
 
-dates = []
-times = []
-prices = []
 
-for price_data in json_data["prices"]:
-    price = price_data['price']
-    start_date = price_data['startDate']
-    end_date = price_data['endDate']
-    start_time = to_gmt_plus_2(int(start_date[11:13]))
-    end_time = to_gmt_plus_2(int(end_date[11:13]))
-    date = start_date[0:10] if end_time == 0 else ""
+log("This program will get the latest electricity prices from https://api.porssisahko.net/v1/latest-prices.json and write the data to an excel file called hinnat.xlsl. The file should not be open at the time of writing. Data is queried at program startup and then daily at 17:00.")
 
-    time = str(start_time) + "-" + str(end_time)
+while True:
+    response = requests.get("https://api.porssisahko.net/v1/latest-prices.json")
+    if response.status_code != 200:
+        log("ERROR: Unable to get data from server. Return code = " + str(response.status_code) + ". Trying again in 15 minutes.")
+        time.sleep(15*60)
+        continue
 
-    dates.append(date)
-    times.append(time)
-    prices.append(price)
+    log("Data obtained from https://api.porssisahko.net/v1/latest-prices.json")
+    json_data = response.json()
 
-data = {'pvm': dates, 'klo': times, 'hinta snt / kWh, sis. alv.': prices}
+    dates = []
+    times = []
+    prices = []
 
-df = pandas.DataFrame(data=data)
-print(df)
-df.to_excel('hinnat.xlsx')
+    for price_data in json_data["prices"]:
+        price = price_data["price"]
+        start_date = price_data["startDate"]
+        end_date = price_data["endDate"]
+        start_time = to_gmt_plus_2(int(start_date[11:13]))
+        end_time = to_gmt_plus_2(int(end_date[11:13]))
+        date_num = start_date[0:10] if end_time == 0 else ""
+
+        time_str = str(start_time) + "-" + str(end_time)
+
+        dates.append(date_num)
+        times.append(time_str)
+        prices.append(price)
+
+    d = {"pvm": dates, "klo": times, "hinta snt / kWh, sis. alv.": prices}
+    df = pandas.DataFrame(data=d)
+
+    filename = "hinnat.xlsx"
+    log("Writing latest data to " + filename)
+    try:
+        df.to_excel(filename)
+        log("File write completed")
+        sleep_until_17()
+    except PermissionError:
+        log("ERROR: Unable to write file. No permission. Maybe the file is already open? Trying again in 15 minutes.")
+        time.sleep(15*60)
+
