@@ -67,6 +67,15 @@ while True:
         log("File write completed")
         sleep_until_17()
     except PermissionError:
-        log("ERROR: Unable to write file. No permission. Maybe the file is already open? Trying again in 15 minutes.")
+        log("ERROR: Permission error - Unable to write file. Maybe the file is already open? Trying again in 15 minutes.")
         time.sleep(15*60)
+    except FileNotFoundError:
+        log("ERROR: File not found error - Check if the directory exists.")
+    except ValueError as e:
+        log(f"ERROR: Value error - {e}")
+    except OSError as e:
+        log(f"ERROR: OS error - {e}")
+    except Exception as e:
+        log(f"ERROR: An unexpected error occurred - {e}")
+
 
